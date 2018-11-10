@@ -71,7 +71,7 @@ class RaspberryPiDevice(threading.Thread):
 
 	def setup(self):
 		self.gpio.setmode(self.gpio.BCM)
-		self.gpio.setup(self.doorOpenDetectionPin, self.gpio.IN)
+		self.gpio.setup(self.doorOpenDetectionPin, self.gpio.IN, pull_up_down = self.gpio.PUD_DOWN if self.doorOpenOpenState == True else self.gpio.PUD_UP)
 		self.gpio.setup(self.lightRelayPin, self.gpio.OUT, initial=self.state)
 
 	def update(self):
@@ -96,6 +96,7 @@ class RaspberryPiDevice(threading.Thread):
 
 	def change_light_state_to(self, newState):
 		if self.state != newState:
+			self._logger.info("Setting GPIO" + str(self.lightRelayPin) + " to " + self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
 			self.gpio.output(self.lightRelayPin, self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
 			self.state = newState
 

@@ -95,6 +95,7 @@ class RaspberryPiDevice(threading.Thread):
 
 
 	def change_light_state_to(self, newState):
+		self._logger.info("Changing light state to: " + str(newState))
 		if self.state != newState:
 			self._logger.info("Setting GPIO" + str(self.lightRelayPin) + " to " + self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
 			self.gpio.output(self.lightRelayPin, self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)

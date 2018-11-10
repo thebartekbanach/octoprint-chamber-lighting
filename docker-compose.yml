@@ -1,0 +1,15 @@
+# for test purposes only
+version: '2'
+services:
+  octoprint:
+    image: octoprint/octoprint
+    container_name: octoprint-dev
+    ports:
+      - 5000:5000
+    # devices:
+    #  - /dev/ttyACM0:/dev/ttyACM0
+    entrypoint: ["/bin/bash", "/home/octoprint/start.sh"]
+    volumes:
+      - ./config:/home/octoprint/.octoprint
+      - .:/home/octoprint/octoprint-plugin
+      - ./start.sh:/home/octoprint/start.sh

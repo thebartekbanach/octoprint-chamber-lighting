@@ -1,0 +1,37 @@
+.is-hidden {
+    display: none;
+}
+
+
+#navbar_plugin_chamber_lighting {
+    position: relative;
+    padding: 10px 20px;
+    padding-left: 30px;
+    cursor: pointer;
+
+    *::selection {
+        background: none;
+    }
+
+    .light-bulb-icon {
+        position: absolute;
+        top: 50%;
+        left: 5px;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        filter: grayscale(100%);
+        transition: filter 300ms;
+    }
+
+    &.is-turned-on {
+        .light-bulb-icon {
+            filter: grayscale(0%);
+        }
+    }
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.1);
+    }
+
+}

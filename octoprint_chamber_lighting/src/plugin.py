@@ -134,7 +134,10 @@ class RaspberryPiDevice(threading.Thread):
 			self._logger.info("Changing light state")
 			self._logger.info("Setting GPIO" + str(self.lightRelayPin) + " to " + str(self.lightRelayTurnedOnState) if newState else str(not self.lightRelayTurnedOnState))
 			self.gpio.output(self.lightRelayPin, self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
-			self.state = newState
+
+			with self.lock:
+				self.state = newState
+				self._logger.info("NEW STATE IS " + str(self.state))
 
 	def door_is_open(self):
 		return self.gpio.input(self.doorOpenDetectionPin) == self.doorOpenOpenState

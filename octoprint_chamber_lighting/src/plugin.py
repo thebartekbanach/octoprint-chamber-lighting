@@ -62,6 +62,7 @@ class RaspberryPiDevice(threading.Thread):
 		)
 
 		self.setup()
+		self.initialize_light_state()
 		self.register_worker()
 
 
@@ -128,6 +129,9 @@ class RaspberryPiDevice(threading.Thread):
 				sleep(self.autoLightHoldTime / 1000 - 0.25)
 				self.change_light_state_to(self.door_is_open())
 
+	def initialize_light_state(self):
+		self.state = not self.state
+		self.change_light_state_to(not self.state)
 
 	def change_light_state_to(self, newState):
 		if self.state != newState:

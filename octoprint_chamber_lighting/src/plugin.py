@@ -9,9 +9,35 @@ from enum import Enum
 import threading
 from time import sleep
 
+class FakeGpio:
+	IN = "IN"
+	OUT = "OUT"
+
+	PUD_DOWN = "PUD_DOWN"
+	PUD_UP = "PUD_UP"
+
+	BCM = "BCM"
+	BOARD = "BOARD"
+
+	def __init__(self, log):
+		self.log = log
+
+	def setmode(self, mode):
+		self.log.info("GPIO SETMODE CALLED TO " + mode)
+
+	def setup(self, pin, mode, pull_up_down = None, initial = None):
+		self.log.info("GPIO SETUP FOR BCM" + str(pin) + " WITH MODE '" + mode + "' AND " + (("pull_up_down=" + pull_up_down) if pull_up_down else ("initial=" + str(initial))))
+
+	def output(self, pin, state):
+		self.log.info("GPIO OUTPUT FOR BCM" + str(pin) + " TO STATE " + str(state))
+
+	def input(self, pin):
+		self.log.info("GPIO INPUT FOR BCM" + str(pin) + " RETURNING FALSE")
+		return 0
+
 # device.py
 class RaspberryPiDevice(threading.Thread):
-	def __init__(self, _logger, lastState, mode, lightRelayPin, doorOpenDetectionPin, lightRelayTurnedOnState, doorOpenIsOpenState, autoLightHoldTime, lastInitWasPropertly):
+	def __init__(self, _logger, lastState, mode, lightRelayPin, doorOpenDetectionPin, lightRelayTurnedOnState, doorOpenIsOpenState, autoLightHoldTime, is_rpi):
 		threading.Thread.__init__(self)
 
 		self._logger = _logger
@@ -23,28 +49,36 @@ class RaspberryPiDevice(threading.Thread):
 		self.doorOpenOpenState = doorOpenIsOpenState
 		self.autoLightHoldTime = autoLightHoldTime
 		self.mode = mode
+		self.is_rpi = is_rpi
 
 		self.stop = False
 		self.state = lastState
 		self.lock = threading.RLock()
 
-		if self.import_gpio_driver() and lastInitWasPropertly:
-			self.setup()
-			self.register_worker()
-			self.initializedPropertly = True
-			self._logger.info("Device driver initialized!")
-		else:
-			self.initializedPropertly = False
-			self._logger.info("Cannot initialize device since it is not a Raspberry Pi!")
+		self._logger.info(
+			"Device driver initialized!"
+			if self.import_gpio_driver()
+			else "Device driver initialized with FakeGpio class!"
+		)
+
+		self.setup()
+		self.register_worker()
 
 
 	def import_gpio_driver(self):
+		if hasattr(self, "is_rpi") and self.is_rpi != None and self.is_rpi == False:
+			self.gpio = FakeGpio(self._logger)
+			return False
+
 		try:
 			import RPi.GPIO as GPIO
 			self.gpio = GPIO
-			return True
+			self.is_rpi = True
 		except:
-			return False
+			self.gpio = FakeGpio(self._logger)
+			self.is_rpi = False
+
+		return self.is_rpi
 
 
 	def register_worker(self):
@@ -62,8 +96,8 @@ class RaspberryPiDevice(threading.Thread):
 	def delete(self):
 		with self.lock:
 			self.stop = True
-		if self.initializedPropertly:
-			self.join()
+
+		self.join()
 
 	def get_lighting_state(self):
 		with self.lock:
@@ -95,9 +129,8 @@ class RaspberryPiDevice(threading.Thread):
 
 
 	def change_light_state_to(self, newState):
-		self._logger.info("Changing light state to: " + str(newState))
 		if self.state != newState:
-			self._logger.info("Setting GPIO" + str(self.lightRelayPin) + " to " + self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
+			self._logger.info("Setting GPIO" + str(self.lightRelayPin) + " to " + str(self.lightRelayTurnedOnState) if newState else str(not self.lightRelayTurnedOnState))
 			self.gpio.output(self.lightRelayPin, self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
 			self.state = newState
 
@@ -132,11 +165,11 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 
 	def reinitialize_device(self):
 		last = False
-		initializedPropertly = True
+		is_rpi = None
 
 		if hasattr(self, "device"):
 			last = self.device.get_lighting_state()
-			initializedPropertly = self.device.initializedPropertly
+			is_rpi = self.device.is_rpi
 			self.device.delete()
 			self.device = None
 
@@ -149,7 +182,7 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 			self._settings.get_boolean(["lighting_relay_switch_on_state"]),
 			self._settings.get_boolean(["door_open_detection_state"]),
 			self._settings.get_int(["auto_light_hold_time"]),
-			initializedPropertly
+			is_rpi
 		)
 
 	def get_settings_defaults(self):

@@ -35,7 +35,6 @@ class FakeGpio:
 		self.log.info("GPIO INPUT FOR BCM" + str(pin) + " RETURNING FALSE")
 		return 0
 
-# device.py
 class RaspberryPiDevice(threading.Thread):
 	def __init__(self, _logger, lastState, mode, lightRelayPin, doorOpenDetectionPin, lightRelayTurnedOnState, doorOpenIsOpenState, autoLightHoldTime, is_rpi):
 		threading.Thread.__init__(self)
@@ -167,19 +166,16 @@ class RaspberryPiDevice(threading.Thread):
 
 Device = RaspberryPiDevice
 
-# enums.light_mode.py
 class LightMode(Enum):
 	MANUAL = 0
 	AUTO = 1
 	ON = 2
 	OFF = 3
 
-# enums.pin_state.py
 class PinState(Enum):
 	HIGH = True
 	LOW = False
 
-# this
 class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 							octoprint.plugin.TemplatePlugin,
 							octoprint.plugin.SettingsPlugin,

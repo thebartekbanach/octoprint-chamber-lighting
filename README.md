@@ -1,17 +1,14 @@
-# OctoPrint-Helloworld
+# Octoprint-chamber-lighting plugin for Raspberry Pi
 
-**TODO:** Describe what your plugin does.
+Simple octoprint lighting controller for 3D printer with chamber. Works only with Raspberry Pi and simple 1/0 module.
+Feel free to fork this plugin and replace Device object in plugin.py with your driver for your device.
 
 ## Setup
 
-Install via the bundled [Plugin Manager](https://github.com/foosel/OctoPrint/wiki/Plugin:-Plugin-Manager)
-or manually using this URL:
+Install using this URL:
 
-    https://github.com/yourGithubName/OctoPrint-Helloworld/archive/master.zip
-
-**TODO:** Describe how to install your plugin, if more needs to be done than just installing it via pip or through
-the plugin manager.
+    https://github.com/thebartekbanach/octoprint-chamber-lightingarchive/master.zip
 
 ## Configuration
 
-**TODO:** Describe your plugin's configuration options (if any).
+You need to set pinout and states in plugin configuration.

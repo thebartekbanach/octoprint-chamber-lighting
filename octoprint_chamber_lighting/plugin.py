@@ -9,16 +9,19 @@ from enum import Enum
 import threading
 from time import sleep
 
-class LightMode(Enum):
+class LightMode:
 	MANUAL = 0
 	AUTO = 1
 	ON = 2
 	OFF = 3
 
-class PinState(Enum):
+class PinState:
 	HIGH = True
 	LOW = False
 
+class LightState:
+	ON = True
+	OFF = False
 
 class FakeGpio:
 	IN = "IN"
@@ -34,145 +37,165 @@ class FakeGpio:
 		self.log = log
 
 	def setmode(self, mode):
-		self.log.info("GPIO SETMODE CALLED TO " + mode)
+		self.log.debug("GPIO SETMODE CALLED TO " + mode)
 
 	def setup(self, pin, mode, pull_up_down = None, initial = None):
-		self.log.info("GPIO SETUP FOR BCM" + str(pin) + " WITH MODE '" + mode + "' AND " + (("pull_up_down=" + pull_up_down) if pull_up_down else ("initial=" + str(initial))))
+		self.log.debug("GPIO SETUP FOR BCM" + str(pin) + " WITH MODE '" + mode + "' AND " + (("pull_up_down=" + pull_up_down) if pull_up_down else ("initial=" + str(initial))))
 
 	def output(self, pin, state):
-		self.log.info("GPIO OUTPUT FOR BCM" + str(pin) + " TO STATE " + str(state))
+		self.log.debug("GPIO OUTPUT FOR BCM" + str(pin) + " TO STATE " + str(state))
 
 	def input(self, pin):
-		self.log.info("GPIO INPUT FOR BCM" + str(pin) + " RETURNING FALSE")
+		self.log.debug("GPIO INPUT FOR BCM" + str(pin) + " RETURNING FALSE")
 		return 0
 
 class RaspberryPiDevice(threading.Thread):
-	def __init__(self, _logger, lastState, mode, lightRelayPin, doorOpenDetectionPin, lightRelayTurnedOnState, doorOpenIsOpenState, autoLightHoldTime, is_rpi):
+	_updateTime = 0.25
+
+	def __init__(self,
+				 logger,
+				 pluginMode,
+				 lightRelayPin,
+				 doorOpenDetectionPin,
+				 lightRelayTurnedOnState,
+				 doorIsOpenState,
+				 autoLightHoldTime,
+				 last_instance_shared_data):
+
 		threading.Thread.__init__(self)
 
-		self._logger = _logger
-		self._logger.info("Initializing device driver!")
+		self._log = logger
+		self._log.debug("Initializing device driver!")
 
-		self.lightRelayPin = lightRelayPin
-		self.doorOpenDetectionPin = doorOpenDetectionPin
-		self.lightRelayTurnedOnState = lightRelayTurnedOnState
-		self.doorOpenOpenState = doorOpenIsOpenState
-		self.autoLightHoldTime = autoLightHoldTime
-		self.mode = mode
-		self.is_rpi = is_rpi
+		self._lightRelayPin = lightRelayPin
+		self._doorOpenDetectionPin = doorOpenDetectionPin
+		self._lightRelayTurnedOnState = lightRelayTurnedOnState
+		self._doorIsOpenState = doorIsOpenState
+		self._autoLightHoldTime = autoLightHoldTime
+		self._pluginMode = pluginMode
 
-		self.stop = False
-		self.state = lastState
-		self.lock = threading.RLock()
+		self._stop = False
+		self._lock = threading.RLock()
 
-		self._logger.info(
-			"Device driver initialized!"
-			if self.import_gpio_driver()
-			else "Device driver initialized with FakeGpio class!"
+		self._init_with_data_from_last_instance(last_instance_shared_data)
+
+		self._setup_device()
+		self._run_worker()
+
+	def release_driver(self):
+		with self._lock:
+			self._stop = True
+
+		self.join()
+
+		return dict(
+			_state = self._state,
+			_isRpi = self._isRpi,
+			_gpio = self._gpio
 		)
 
-		self.setup()
-		self.register_worker()
+	def get_lighting_state(self):
+		with self._lock:
+			return self._state
 
+	def _init_with_data_from_last_instance(self, data):
+		if data != None: # initialize from last state
+			self._state = data["_state"]
+			self._isRpi = data["_isRpi"]
+			self._gpio = data["_gpio"]
+		else: # initialize defaults
+			self._state = False
+			self._gpio = self._import_gpio_driver()
 
-	def import_gpio_driver(self):
-		if hasattr(self, "is_rpi") and self.is_rpi != None and self.is_rpi == False:
-			self.gpio = FakeGpio(self._logger)
-			return False
-
+	def _import_gpio_driver(self):
 		try:
 			import RPi.GPIO as GPIO
-			self.gpio = GPIO
-			self.is_rpi = True
+			self._gpio = GPIO
+			self._isRpi = True
 		except:
-			self.gpio = FakeGpio(self._logger)
-			self.is_rpi = False
+			self._gpio = FakeGpio(self._log)
+			self._isRpi = False
 
-		return self.is_rpi
+		return self._gpio
 
-
-	def register_worker(self):
+	def _run_worker(self):
 		self.start()
 
 	def run(self):
 		while True:
-			with self.lock:
-				if self.stop == True:
+			with self._lock:
+				if self._stop == True:
 					return
 
-			self.update()
-			sleep(0.25)
+			self._update()
+			sleep(self._updateTime)
 
-	def delete(self):
-		with self.lock:
-			self.stop = True
+	def _setup_device(self):
+		self._gpio.setmode(self._gpio.BCM)
 
-		self.join()
+		self._gpio.setup(
+			self._doorOpenDetectionPin,
+			self._gpio.IN, pull_up_down =
+				self._gpio.PUD_DOWN
+				if self._doorIsOpenState == True
+				else self._gpio.PUD_UP
+			)
 
-	def get_lighting_state(self):
-		with self.lock:
-			return self.state
+		self._gpio.setup(self._lightRelayPin, self._gpio.OUT)
 
-	def setup(self):
-		self.gpio.setmode(self.gpio.BCM)
-		self.gpio.setup(self.doorOpenDetectionPin, self.gpio.IN, pull_up_down = self.gpio.PUD_DOWN if self.doorOpenOpenState == True else self.gpio.PUD_UP)
-		self.gpio.setup(self.lightRelayPin, self.gpio.OUT)
+		self._initialize_light_state()
+		self._update()
 
-		self.initialize_light_state()
-		self.update()
+	def _initialize_light_state(self):
+		self._state = not self._state
+		self._change_light_state_to(not self._state)
 
-	def update(self):
-		if self.mode == LightMode.ON.value:
-			self.change_light_state_to(True)
+	def _update(self):
+		if self._pluginMode == LightMode.ON:
+			self._change_light_state_to(True)
 			return
 
-		elif self.mode == LightMode.OFF.value:
-			self.change_light_state_to(False)
+		elif self._pluginMode == LightMode.OFF:
+			self._change_light_state_to(False)
 			return
 
-		doorIsOpen = self.door_is_open()
-		self._logger.info("doorIsOpen = " + str(doorIsOpen))
+		doorIsOpen = self._door_is_open()
 
-		if self.mode == LightMode.MANUAL.value:
-			self.change_light_state_to(doorIsOpen)
+		if self._pluginMode == LightMode.MANUAL:
+			self._change_light_state_to(doorIsOpen)
 
-		elif self.mode == LightMode.AUTO.value:
+		elif self._pluginMode == LightMode.AUTO:
 			if doorIsOpen:
-				self.change_light_state_to(True)
-			elif not doorIsOpen and self.state == True:
-				self.hold_light_and_turn_off()
+				self._change_light_state_to(True)
+			elif not doorIsOpen:
+				with self._lock:
+					if self._state == True:
+						self._hold_light_and_turn_off()
 
-	def hold_light_and_turn_off(self):
-		holdTime = 0
+	def _hold_light_and_turn_off(self):
+		currentHoldTime = 0
 
-		while holdTime < self.autoLightHoldTime:
-			with self.lock:
-				if self.stop == True: # check for plugin mode change
-					self.change_light_state_to(False)
+		while currentHoldTime < self._autoLightHoldTime:
+			with self._lock:
+				if self._stop == True: # check for plugin mode change
+					self._change_light_state_to(False)
 					return
 
-			holdTime += 0.25
-			sleep(0.25)
+			currentHoldTime += self._updateTime
+			sleep(self._updateTime)
 
-		if not self.door_is_open():
-			self.change_light_state_to(False)
+		if not self._door_is_open():
+			self._change_light_state_to(False)
 
-	def initialize_light_state(self):
-		self.state = not self.state
-		self.change_light_state_to(not self.state)
+	def _change_light_state_to(self, newState):
+		if self._state != newState:
+			self._gpio.output(self._lightRelayPin, self._lightRelayTurnedOnState if newState else not self._lightRelayTurnedOnState)
 
-	def change_light_state_to(self, newState):
-		if self.state != newState:
-			self._logger.info("Changing light state")
-			self._logger.info("Setting GPIO" + str(self.lightRelayPin) + " to " + str(self.lightRelayTurnedOnState) if newState else str(not self.lightRelayTurnedOnState))
-			self.gpio.output(self.lightRelayPin, self.lightRelayTurnedOnState if newState else not self.lightRelayTurnedOnState)
+			with self._lock:
+				self._state = newState
 
-			with self.lock:
-				self.state = newState
-				self._logger.info("NEW STATE IS " + str(self.state))
-
-	def door_is_open(self):
-		return self.gpio.input(self.doorOpenDetectionPin) == self.doorOpenOpenState
+	def _door_is_open(self):
+		return self._gpio.input(self._doorOpenDetectionPin) == self._doorIsOpenState
 
 Device = RaspberryPiDevice
 
@@ -187,35 +210,31 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 		self.reinitialize_device()
 
 	def reinitialize_device(self):
-		last = False
-		is_rpi = None
+		shared = None
 
-		if hasattr(self, "device"):
-			last = self.device.get_lighting_state()
-			is_rpi = self.device.is_rpi
-			self.device.delete()
+		if hasattr(self, "device") and self.device != None:
+			shared = self.device.release_driver()
 			self.device = None
 
 		self.device = Device(
 			self._logger,
-			last,
 			self._settings.get_int(["lighting_mode"]),
 			self._settings.get_int(["lighting_relay_switch_pin"]),
 			self._settings.get_int(["door_open_detection_pin"]),
 			self._settings.get_boolean(["lighting_relay_switch_on_state"]),
 			self._settings.get_boolean(["door_open_detection_state"]),
 			self._settings.get_int(["auto_light_hold_time"]),
-			is_rpi
+			shared
 		)
 
 	def get_settings_defaults(self):
 		return dict( # default_settings.py
-			lighting_mode = LightMode.ON.value,
-			mode_when_printing = LightMode.ON.value,
+			lighting_mode = LightMode.ON,
+			mode_when_printing = LightMode.ON,
 			door_open_detection_pin = 0,
 			lighting_relay_switch_pin = 0,
-			door_open_detection_state = PinState.HIGH.value,
-			lighting_relay_switch_on_state = PinState.LOW.value,
+			door_open_detection_state = PinState.HIGH,
+			lighting_relay_switch_on_state = PinState.LOW,
 			auto_light_hold_time = 5000
 		)
 
@@ -262,9 +281,9 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 	def get_next_lighting_state(self):
 		actual = self.get_actual_lighting_state()
 
-		if actual == LightMode.OFF.value:
-			return LightMode.MANUAL.value
-		else: return actual + 1
+		if actual == LightMode.OFF:
+			return LightMode.MANUAL
+		else: return actual + 1 # next
 
 	def change_lighting_state_to(self, next_state):
 		self._settings.set(["lighting_mode"], next_state)

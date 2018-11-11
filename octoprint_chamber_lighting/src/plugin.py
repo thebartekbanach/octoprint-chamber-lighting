@@ -127,9 +127,25 @@ class RaspberryPiDevice(threading.Thread):
 			self.change_light_state_to(doorIsOpen)
 
 		elif self.mode == LightMode.AUTO.value:
-			if not doorIsOpen and self.state == True:
-				sleep(self.autoLightHoldTime / 1000 - 0.25)
-				self.change_light_state_to(self.door_is_open())
+			if doorIsOpen:
+				self.change_light_state_to(True)
+			elif not doorIsOpen and self.state == True:
+				self.hold_light_and_turn_off()
+
+	def hold_light_and_turn_off(self):
+		holdTime = 0
+
+		while holdTime < self.autoLightHoldTime:
+			with self.lock:
+				if self.stop == True: # check for plugin mode change
+					self.change_light_state_to(False)
+					return
+
+			holdTime += 0.25
+			sleep(0.25)
+
+		if not self.door_is_open():
+			self.change_light_state_to(False)
 
 	def initialize_light_state(self):
 		self.state = not self.state

@@ -9,6 +9,17 @@ from enum import Enum
 import threading
 from time import sleep
 
+class LightMode(Enum):
+	MANUAL = 0
+	AUTO = 1
+	ON = 2
+	OFF = 3
+
+class PinState(Enum):
+	HIGH = True
+	LOW = False
+
+
 class FakeGpio:
 	IN = "IN"
 	OUT = "OUT"
@@ -163,18 +174,7 @@ class RaspberryPiDevice(threading.Thread):
 	def door_is_open(self):
 		return self.gpio.input(self.doorOpenDetectionPin) == self.doorOpenOpenState
 
-
 Device = RaspberryPiDevice
-
-class LightMode(Enum):
-	MANUAL = 0
-	AUTO = 1
-	ON = 2
-	OFF = 3
-
-class PinState(Enum):
-	HIGH = True
-	LOW = False
 
 class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 							octoprint.plugin.TemplatePlugin,

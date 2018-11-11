@@ -8,8 +8,8 @@ services:
       - 5000:5000
     # devices:
     #  - /dev/ttyACM0:/dev/ttyACM0
-    entrypoint: ["/bin/bash", "/home/octoprint/start.sh"]
+    entrypoint: ["/bin/bash", "/home/octoprint/entrypoint.sh"]
     volumes:
       - ./config:/home/octoprint/.octoprint
       - .:/home/octoprint/octoprint-plugin
-      - ./start.sh:/home/octoprint/start.sh
+      - ./entrypoint.sh:/home/octoprint/entrypoint.sh

@@ -4,8 +4,6 @@ from __future__ import absolute_import
 import octoprint.plugin
 import flask
 
-from enum import Enum
-
 import threading
 from time import sleep
 

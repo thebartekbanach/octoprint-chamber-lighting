@@ -62,7 +62,6 @@ class RaspberryPiDevice(threading.Thread):
 		)
 
 		self.setup()
-		self.initialize_light_state()
 		self.register_worker()
 
 
@@ -107,7 +106,10 @@ class RaspberryPiDevice(threading.Thread):
 	def setup(self):
 		self.gpio.setmode(self.gpio.BCM)
 		self.gpio.setup(self.doorOpenDetectionPin, self.gpio.IN, pull_up_down = self.gpio.PUD_DOWN if self.doorOpenOpenState == True else self.gpio.PUD_UP)
-		self.gpio.setup(self.lightRelayPin, self.gpio.OUT, initial=self.state)
+		self.gpio.setup(self.lightRelayPin, self.gpio.OUT)
+
+		self.initialize_light_state()
+		self.update()
 
 	def update(self):
 		if self.mode == LightMode.ON.value:

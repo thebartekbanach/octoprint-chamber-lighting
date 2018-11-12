@@ -93,8 +93,7 @@ class RaspberryPiDevice(threading.Thread):
 		)
 
 	def get_lighting_state(self):
-		with self._lock:
-			return self._state
+		return self._get_state()
 
 	def _init_with_data_from_last_instance(self, data):
 		if data != None: # initialize from last state
@@ -148,6 +147,14 @@ class RaspberryPiDevice(threading.Thread):
 		self._state = not self._state
 		self._change_light_state_to(not self._state)
 
+	def _set_state(self, newState):
+		with self._lock:
+			self._state = newState
+
+	def _get_state(self):
+		with self._lock:
+			return self._state
+
 	def _update(self):
 		if self._pluginMode == LightMode.ON:
 			self._change_light_state_to(True)
@@ -166,9 +173,8 @@ class RaspberryPiDevice(threading.Thread):
 			if doorIsOpen:
 				self._change_light_state_to(True)
 			elif not doorIsOpen:
-				with self._lock:
-					if self._state == True:
-						self._hold_light_and_turn_off()
+				if self._get_state() == True:
+					self._hold_light_and_turn_off()
 
 	def _hold_light_and_turn_off(self):
 		currentHoldTime = 0
@@ -186,11 +192,14 @@ class RaspberryPiDevice(threading.Thread):
 			self._change_light_state_to(False)
 
 	def _change_light_state_to(self, newState):
-		if self._state != newState:
-			self._gpio.output(self._lightRelayPin, self._lightRelayTurnedOnState if newState else not self._lightRelayTurnedOnState)
+		if self._get_state() != newState:
+			self._gpio.output(
+				self._lightRelayPin,
+				self._lightRelayTurnedOnState if newState
+					else not self._lightRelayTurnedOnState
+			)
 
-			with self._lock:
-				self._state = newState
+			self._set_state(newState)
 
 	def _door_is_open(self):
 		return self._gpio.input(self._doorOpenDetectionPin) == self._doorIsOpenState

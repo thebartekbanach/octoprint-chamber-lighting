@@ -21,6 +21,11 @@ class LightState:
 	ON = True
 	OFF = False
 
+class AutoTurnOnWhen:
+	OFF = 0
+	PRINTING = 1
+	CONNECTED = 2
+
 class FakeGpio:
 	IN = "IN"
 	OUT = "OUT"
@@ -63,7 +68,6 @@ class RaspberryPiDevice(threading.Thread):
 		threading.Thread.__init__(self)
 
 		self._log = logger
-		self._log.debug("Initializing device driver!")
 
 		self._lightRelayPin = lightRelayPin
 		self._doorOpenDetectionPin = doorOpenDetectionPin
@@ -141,7 +145,7 @@ class RaspberryPiDevice(threading.Thread):
 		self._gpio.setup(self._lightRelayPin, self._gpio.OUT)
 
 		self._initialize_light_state()
-		self._update()
+		self._update(isInitial = True)
 
 	def _initialize_light_state(self):
 		self._state = not self._state
@@ -155,7 +159,7 @@ class RaspberryPiDevice(threading.Thread):
 		with self._lock:
 			return self._state
 
-	def _update(self):
+	def _update(self, isInitial = False):
 		if self._pluginMode == LightMode.ON:
 			self._change_light_state_to(True)
 			return
@@ -172,23 +176,25 @@ class RaspberryPiDevice(threading.Thread):
 		elif self._pluginMode == LightMode.AUTO:
 			if doorIsOpen:
 				self._change_light_state_to(True)
-			elif not doorIsOpen:
-				if self._get_state() == True:
-					self._hold_light_and_turn_off()
+			elif isInitial and self._get_state() == True:
+				self._change_light_state_to(False)
+			elif not doorIsOpen and self._get_state() == True:
+				self._hold_light_and_turn_off()
 
 	def _hold_light_and_turn_off(self):
 		currentHoldTime = 0
+		modeHasBeenChanged = False
 
 		while currentHoldTime < self._autoLightHoldTime:
 			with self._lock:
-				if self._stop == True: # check for plugin mode change
-					self._change_light_state_to(False)
-					return
+				if self._stop == True: # look for plugin mode change
+					modeHasBeenChanged = True
+					break
 
 			currentHoldTime += self._updateTime
 			sleep(self._updateTime)
 
-		if not self._door_is_open():
+		if modeHasBeenChanged or not self._door_is_open():
 			self._change_light_state_to(False)
 
 	def _change_light_state_to(self, newState):
@@ -214,6 +220,7 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 							octoprint.plugin.AssetPlugin):
 
 	def on_after_startup(self):
+		self._update_printer_state(False, False)
 		self.reinitialize_device()
 
 	def reinitialize_device(self):
@@ -225,7 +232,7 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 
 		self.device = Device(
 			self._logger,
-			self._settings.get_int(["lighting_mode"]),
+			self._get_lighting_mode(),
 			self._settings.get_int(["lighting_relay_switch_pin"]),
 			self._settings.get_int(["door_open_detection_pin"]),
 			self._settings.get_boolean(["lighting_relay_switch_on_state"]),
@@ -234,10 +241,21 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 			shared
 		)
 
+	def _get_lighting_mode(self):
+		autoTurnOnWhen = self._settings.get_int(["auto_turn_on_when"])
+		isAutoMode = self._settings.get_int(["lighting_mode"]) == LightMode.AUTO
+
+		if autoTurnOnWhen == AutoTurnOnWhen.CONNECTED and self._printer_is_connected and isAutoMode:
+			return LightMode.ON
+		elif autoTurnOnWhen == AutoTurnOnWhen.PRINTING and self._is_printing and isAutoMode:
+			return LightMode.ON
+		else:
+			return self._settings.get_int(["lighting_mode"])
+
 	def get_settings_defaults(self):
 		return dict( # default_settings.py
 			lighting_mode = LightMode.ON,
-			mode_when_printing = LightMode.ON,
+			auto_turn_on_when = AutoTurnOnWhen.CONNECTED,
 			door_open_detection_pin = 0,
 			lighting_relay_switch_pin = 0,
 			door_open_detection_state = PinState.HIGH,
@@ -263,18 +281,36 @@ class ChamberLightingPlugin(octoprint.plugin.StartupPlugin,
 			are_lights_turn_on = []
 		)
 
+	def on_event(self, event, payload):
+		if event == "Connected":
+			self._update_printer_state(_printer_is_connected = True)
+		elif event == "Disconnected":
+			self._update_printer_state(_printer_is_connected = False, _is_printing = False)
+		elif event == "PrinterStateChanged":
+			if payload["state_id"] == "PRINTING":
+				self._update_printer_state(_is_printing = True)
+			elif payload["state_id"] in ["CLOSED", "ERROR", "CLOSED_WITH_ERROR"]:
+				self._update_printer_state(_is_printing = False)
+
+	def _update_printer_state(self, _printer_is_connected = None, _is_printing = None):
+		if _printer_is_connected != None:
+			self._printer_is_connected = _printer_is_connected
+
+		if _is_printing != None:
+			self._is_printing = _is_printing
+
+		self.reinitialize_device()
+
 	def on_api_command(self, command, data):
 		if command == "are_lights_turn_on":
 			return flask.jsonify(state = self.device.get_lighting_state())
 
 		elif command == "next_lighitng_state":
-			self._logger.info("Changing to next chamber lighting state")
 			self.change_to_next_lighting_state()
 
 		else: self._logger.error("Bad octoprint_chamber_lighting command! Name: " + command)
 
 	def on_settings_save(self, data):
-		self._logger.info(data)
 		octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
 		self.reinitialize_device()
 

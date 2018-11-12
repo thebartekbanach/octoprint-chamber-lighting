@@ -7,11 +7,12 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label">Mode when printing</label>
+        <label class="control-label">Turn on automatically when</label>
         <div class="controls">
-            <select data-bind="value: settings.plugins.chamber_lighting.mode_when_printing">
-                <option value="0">Off</option>
-                <option value="1">On</option>
+            <select data-bind="value: settings.plugins.chamber_lighting.auto_turn_on_when">
+                <option value="0">Never turn on automatically</option>
+                <option value="1">Printing</option>
+                <option value="2">Connected</option>
             </select>
         </div>
     </div>

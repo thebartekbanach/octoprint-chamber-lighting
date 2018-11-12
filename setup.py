@@ -14,7 +14,7 @@ plugin_package = "octoprint_chamber_lighting"
 plugin_name = "OctoPrint-Chamber-Lighting"
 
 # The plugin's version. Can be overwritten within OctoPrint's internal data via __plugin_version__ in the plugin module
-plugin_version = "0.0.1"
+plugin_version = "1.0.0"
 
 # The plugin's description. Can be overwritten within OctoPrint's internal data via __plugin_description__ in the plugin
 # module
@@ -24,7 +24,7 @@ plugin_description = """Raspberry Pi Chamber lighting plugin for simple relay mo
 plugin_author = "Bartek Banach"
 
 # The plugin's author's mail address.
-plugin_author_email = "thebartekbanach@gmail.com"
+plugin_author_email = "thebartekbanach.dev@gmail.com"
 
 # The plugin's homepage URL. Can be overwritten within OctoPrint's internal data via __plugin_url__ in the plugin module
 plugin_url = "https://github.com/thebartekbanach/octoprint-chamber-lighting"
